@@ -4,6 +4,10 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
+@app.route("/ping")
+def ping():
+    return "OK"
+
 app.secret_key = "gsc-secret"
 
 CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
