@@ -1,5 +1,5 @@
 import os
-from flask import Flask, redirect, request, jsonify
+from flask import Flask, redirect, request, jsonify, session
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
@@ -47,7 +47,52 @@ def callback():
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
 
+    session["credentials"] = {
+    "token": creds.token,
+    "refresh_token": creds.refresh_token,
+    "token_uri": creds.token_uri,
+    "client_id": CLIENT_ID,
+    "client_secret": CLIENT_SECRET,
+    "scopes": creds.scopes,
+}
+
+
     service = build("searchconsole", "v1", credentials=creds)
     sites = service.sites().list().execute()
 
     return jsonify(sites)
+
+import requests
+
+@app.route("/search-analytics", methods=["POST"])
+def search_analytics():
+    data = request.json
+
+    site = data["site"]
+    start_date = data["startDate"]
+    end_date = data["endDate"]
+
+    creds = session.get("credentials")
+    if not creds:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    access_token = creds["token"]
+
+    url = f"https://www.googleapis.com/webmasters/v3/sites/{site.replace('/', '%2F')}/searchAnalytics/query"
+
+    payload = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": ["query"],
+        "rowLimit": 50
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    r = requests.post(url, json=payload, headers=headers)
+
+    return jsonify(r.json())
+
