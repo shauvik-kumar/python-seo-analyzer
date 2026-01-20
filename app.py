@@ -6,7 +6,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 # =====================================================
-# APP SETUP  (THIS MUST COME BEFORE ANY @app.route)
+# APP SETUP (MUST BE FIRST)
 # =====================================================
 app = Flask(__name__)
 app.secret_key = "gsc-secret"
@@ -20,13 +20,30 @@ CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = os.environ["OAUTH_REDIRECT_URI"]
 
 POC_API_KEY = os.environ["POC_API_KEY"]
-GSC_ACCESS_TOKEN = os.environ["GSC_ACCESS_TOKEN"]
+GOOGLE_REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
 DATA_SHEET_ID = int(os.environ["DATA_SHEET_ID"])  # gid, you set = 0
 
 SCOPES = [
     "https://www.googleapis.com/auth/webmasters.readonly",
     "https://www.googleapis.com/auth/spreadsheets"
 ]
+
+# =====================================================
+# TOKEN REFRESH (CORE FIX)
+# =====================================================
+def get_access_token():
+    token_url = "https://oauth2.googleapis.com/token"
+
+    payload = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "refresh_token": GOOGLE_REFRESH_TOKEN,
+        "grant_type": "refresh_token"
+    }
+
+    r = requests.post(token_url, data=payload)
+    r.raise_for_status()
+    return r.json()["access_token"]
 
 # =====================================================
 # HEALTH
@@ -40,7 +57,7 @@ def home():
     return "GSC backend alive"
 
 # =====================================================
-# OAUTH (FOR YOU ONLY – TOKEN GENERATION)
+# OAUTH (YOU ONLY – ONE TIME)
 # =====================================================
 @app.route("/login")
 def login():
@@ -86,14 +103,15 @@ def callback():
     service = build("searchconsole", "v1", credentials=creds)
     sites = service.sites().list().execute()
 
-    # Copy access_token from here → put into Render env as GSC_ACCESS_TOKEN
+    # Copy refresh_token ONCE → put into Render env as GOOGLE_REFRESH_TOKEN
     return jsonify({
         "access_token": creds.token,
+        "refresh_token": creds.refresh_token,
         "sites": sites
     })
 
 # =====================================================
-# EXPORT TO GOOGLE SHEET (CLIENT-FACING, PoC)
+# EXPORT TO GOOGLE SHEET (CLIENT-FACING)
 # =====================================================
 @app.route("/export-to-sheet", methods=["GET"])
 def export_to_sheet():
@@ -103,20 +121,22 @@ def export_to_sheet():
     if data.get("key") != POC_API_KEY:
         return jsonify({"error": "Invalid API key"}), 401
 
-    spreadsheet_id = data["sheetId"]          # long spreadsheet ID
-    sheet_id = DATA_SHEET_ID                  # numeric gid (0)
+    spreadsheet_id = data["sheetId"]
+    sheet_id = DATA_SHEET_ID
 
     site = data["site"]
     start_date = data["startDate"]
     end_date = data["endDate"]
 
+    access_token = get_access_token()
+
     headers = {
-        "Authorization": f"Bearer {GSC_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
 
     # -------------------------------------------------
-    # 1) FETCH GSC DATA (LIMIT 10)
+    # 1️⃣ FETCH GSC DATA (LIMIT 10)
     # -------------------------------------------------
     gsc_url = (
         "https://www.googleapis.com/webmasters/v3/sites/"
@@ -134,7 +154,7 @@ def export_to_sheet():
     rows = gsc_res.json().get("rows", [])
 
     # -------------------------------------------------
-    # 2) BUILD ROWS (HEADER + DATA)
+    # 2️⃣ BUILD ROWS
     # -------------------------------------------------
     values = [
         ["Query", "Clicks", "Impressions", "CTR", "Position"]
@@ -150,7 +170,7 @@ def export_to_sheet():
         ])
 
     # -------------------------------------------------
-    # 3) BATCH UPDATE (WRITE FROM ROW 6)
+    # 3️⃣ WRITE USING batchUpdate (ROW 6 ONWARDS)
     # -------------------------------------------------
     batch_requests = []
 
@@ -159,7 +179,7 @@ def export_to_sheet():
             "updateCells": {
                 "start": {
                     "sheetId": sheet_id,
-                    "rowIndex": 5 + row_index,   # row 6 onward
+                    "rowIndex": 5 + row_index,  # row 6
                     "columnIndex": 0
                 },
                 "rows": [{
