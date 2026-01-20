@@ -1,98 +1,3 @@
-import os
-import requests
-from flask import Flask, redirect, request, jsonify
-from flask_cors import CORS
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-
-# --------------------
-# App setup
-# --------------------
-app = Flask(__name__)
-app.secret_key = "gsc-secret"
-CORS(app)
-
-# --------------------
-# Env vars
-# --------------------
-CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
-CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
-REDIRECT_URI = os.environ["OAUTH_REDIRECT_URI"]
-
-POC_API_KEY = os.environ["POC_API_KEY"]
-GSC_ACCESS_TOKEN = os.environ["GSC_ACCESS_TOKEN"]
-
-SCOPES = [
-    "https://www.googleapis.com/auth/webmasters.readonly",
-    "https://www.googleapis.com/auth/spreadsheets"
-]
-
-# --------------------
-# Health
-# --------------------
-@app.route("/ping")
-def ping():
-    return "OK"
-
-@app.route("/")
-def home():
-    return "GSC backend alive"
-
-# --------------------
-# OAuth (for YOU only)
-# --------------------
-@app.route("/login")
-def login():
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI],
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="consent"
-    )
-    return redirect(auth_url)
-
-@app.route("/oauth/callback")
-def callback():
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI],
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-
-    flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
-
-    service = build("searchconsole", "v1", credentials=creds)
-    sites = service.sites().list().execute()
-
-    return jsonify({
-        "access_token": creds.token,
-        "sites": sites
-    })
-
-# --------------------
-# EXPORT TO SHEET (PoC)
-# --------------------
 @app.route("/export-to-sheet", methods=["GET"])
 def export_to_sheet():
     data = request.args
@@ -112,6 +17,8 @@ def export_to_sheet():
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
+
+    TAB_NAME = "Data"   # <-- THIS MUST MATCH THE SHEET TAB NAME EXACTLY
 
     # --------------------
     # 1. Fetch GSC data (LIMIT 10)
@@ -149,21 +56,21 @@ def export_to_sheet():
         ])
 
     # --------------------
-    # 3. CLEAR first sheet explicitly
+    # 3. CLEAR data area (safe, no overwrite of controls)
     # --------------------
     clear_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/Sheet1!A6:Z1000:clear"
+        f"{sheet_id}/values/{TAB_NAME}!A6:Z1000:clear"
     )
 
-    clear_res = requests.post(clear_url, headers=headers)
+    requests.post(clear_url, headers=headers)
 
     # --------------------
-    # 4. WRITE starting at A1 (overwrite)
+    # 4. WRITE data starting at A6
     # --------------------
     write_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/Sheet1!A6?valueInputOption=RAW"
+        f"{sheet_id}/values/{TAB_NAME}!A6?valueInputOption=RAW"
     )
 
     write_res = requests.put(
