@@ -131,3 +131,80 @@ def search_analytics():
 
     r = requests.post(url, json=payload, headers=headers)
     return jsonify(r.json())
+
+@app.route("/export-to-sheet", methods=["POST"])
+def export_to_sheet():
+    data = request.json
+
+    sheet_id = data["sheetId"]
+    site = data["site"]
+    start_date = data["startDate"]
+    end_date = data["endDate"]
+
+    # Bearer token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid Authorization header"}), 401
+
+    access_token = auth_header.replace("Bearer ", "")
+
+    # 1️⃣ Fetch GSC data (reuse logic)
+    gsc_url = (
+        "https://www.googleapis.com/webmasters/v3/sites/"
+        f"{site.replace('/', '%2F')}/searchAnalytics/query"
+    )
+
+    gsc_payload = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": ["query"],
+        "rowLimit": 1000
+    }
+
+    gsc_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    gsc_response = requests.post(gsc_url, json=gsc_payload, headers=gsc_headers)
+    gsc_data = gsc_response.json()
+
+    rows = gsc_data.get("rows", [])
+
+    # 2️⃣ Prepare sheet rows
+    sheet_rows = [
+        ["Query", "Clicks", "Impressions", "CTR", "Position"]
+    ]
+
+    for row in rows:
+        sheet_rows.append([
+            row["keys"][0],
+            row["clicks"],
+            row["impressions"],
+            row["ctr"],
+            row["position"]
+        ])
+
+    # 3️⃣ Write to Google Sheet
+    sheets_url = f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/A1:append?valueInputOption=RAW"
+
+    sheets_payload = {
+        "values": sheet_rows
+    }
+
+    sheets_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    sheets_response = requests.post(
+        sheets_url,
+        json=sheets_payload,
+        headers=sheets_headers
+    )
+
+    return jsonify({
+        "status": "success",
+        "rows_written": len(sheet_rows) - 1
+    })
+
