@@ -179,8 +179,13 @@ def export_to_sheet():
                 },
                 "rows": [{
                     "values": [
-                        {"userEnteredValue": {"stringValue": str(cell)}}
-                        for cell in row
+                    {
+                            "userEnteredValue": (
+                                {"numberValue": float(cell)}
+                                if isinstance(cell, (int, float))
+                                else {"stringValue": str(cell)}
+                            )
+                        }                        for cell in row
                     ]
                 }],
                 "fields": "userEnteredValue"
