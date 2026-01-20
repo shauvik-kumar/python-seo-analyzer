@@ -25,7 +25,26 @@ def home():
 
 @app.route("/login")
 def login():
-    return "LOGIN ROUTE HIT"
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [REDIRECT_URI],
+            }
+        },
+        scopes=SCOPES,
+        redirect_uri=REDIRECT_URI,
+    )
+
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        prompt="consent"
+    )
+    return redirect(auth_url)
+
 
 
 @app.route("/oauth/callback")
