@@ -21,7 +21,7 @@ REDIRECT_URI = os.environ["OAUTH_REDIRECT_URI"]
 
 POC_API_KEY = os.environ["POC_API_KEY"]
 GOOGLE_REFRESH_TOKEN = os.environ["GOOGLE_REFRESH_TOKEN"]
-DATA_SHEET_ID = int(os.environ["DATA_SHEET_ID"])  # gid, you set = 0
+DATA_SHEET_ID = int(os.environ["DATA_SHEET_ID"])  # gid = 0
 
 SCOPES = [
     "https://www.googleapis.com/auth/webmasters.readonly",
@@ -41,9 +41,9 @@ def get_access_token():
         "grant_type": "refresh_token"
     }
 
-    r = requests.post(token_url, data=payload)
-    r.raise_for_status()
-    return r.json()["access_token"]
+    response = requests.post(token_url, data=payload)
+    response.raise_for_status()
+    return response.json()["access_token"]
 
 # =====================================================
 # HEALTH
@@ -75,15 +75,16 @@ def login():
         redirect_uri=REDIRECT_URI,
     )
 
-        auth_url, _ = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
-            include_granted_scopes=False
-        )
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes=False
+    )
 
+    return redirect(auth_url)
 
 @app.route("/oauth/callback")
-def callback():
+def oauth_callback():
     flow = Flow.from_client_config(
         {
             "web": {
@@ -104,7 +105,7 @@ def callback():
     service = build("searchconsole", "v1", credentials=creds)
     sites = service.sites().list().execute()
 
-    # Copy refresh_token ONCE → put into Render env as GOOGLE_REFRESH_TOKEN
+    # Copy refresh_token ONCE and store in Render
     return jsonify({
         "access_token": creds.token,
         "refresh_token": creds.refresh_token,
@@ -118,7 +119,6 @@ def callback():
 def export_to_sheet():
     data = request.args
 
-    # ---- API KEY CHECK ----
     if data.get("key") != POC_API_KEY:
         return jsonify({"error": "Invalid API key"}), 401
 
@@ -136,9 +136,7 @@ def export_to_sheet():
         "Content-Type": "application/json"
     }
 
-    # -------------------------------------------------
-    # 1️⃣ FETCH GSC DATA (LIMIT 10)
-    # -------------------------------------------------
+    # ---- Fetch GSC data (limit 10) ----
     gsc_url = (
         "https://www.googleapis.com/webmasters/v3/sites/"
         f"{site.replace('/', '%2F')}/searchAnalytics/query"
@@ -151,12 +149,10 @@ def export_to_sheet():
         "rowLimit": 10
     }
 
-    gsc_res = requests.post(gsc_url, json=gsc_payload, headers=headers)
-    rows = gsc_res.json().get("rows", [])
+    gsc_response = requests.post(gsc_url, json=gsc_payload, headers=headers)
+    rows = gsc_response.json().get("rows", [])
 
-    # -------------------------------------------------
-    # 2️⃣ BUILD ROWS
-    # -------------------------------------------------
+    # ---- Prepare rows ----
     values = [
         ["Query", "Clicks", "Impressions", "CTR", "Position"]
     ]
@@ -170,17 +166,15 @@ def export_to_sheet():
             r["position"]
         ])
 
-    # -------------------------------------------------
-    # 3️⃣ WRITE USING batchUpdate (ROW 6 ONWARDS)
-    # -------------------------------------------------
+    # ---- Batch update (row 6 onwards) ----
     batch_requests = []
 
-    for row_index, row in enumerate(values):
+    for i, row in enumerate(values):
         batch_requests.append({
             "updateCells": {
                 "start": {
                     "sheetId": sheet_id,
-                    "rowIndex": 5 + row_index,  # row 6
+                    "rowIndex": 5 + i,
                     "columnIndex": 0
                 },
                 "rows": [{
@@ -195,7 +189,7 @@ def export_to_sheet():
 
     batch_url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
 
-    batch_res = requests.post(
+    batch_response = requests.post(
         batch_url,
         json={"requests": batch_requests},
         headers=headers
@@ -204,6 +198,6 @@ def export_to_sheet():
     return jsonify({
         "status": "success",
         "rows_written": len(values) - 1,
-        "batch_status": batch_res.status_code,
-        "batch_response": batch_res.text
+        "batch_status": batch_response.status_code,
+        "batch_response": batch_response.text
     })
