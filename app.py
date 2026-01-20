@@ -132,9 +132,12 @@ def search_analytics():
     r = requests.post(url, json=payload, headers=headers)
     return jsonify(r.json())
 
-@app.route("/export-to-sheet", methods=["POST"])
+@app.route("/export-to-sheet", methods=["GET", "POST"])
 def export_to_sheet():
-    data = request.json
+    if request.method == "GET":
+        data = request.args
+    else:
+        data = request.json
 
     sheet_id = data["sheetId"]
     site = data["site"]
