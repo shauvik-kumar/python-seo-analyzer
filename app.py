@@ -4,6 +4,7 @@ from flask import Flask, redirect, request, jsonify
 from flask_cors import CORS
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from urllib.parse import quote
 
 # --------------------
 # App setup (MUST COME FIRST)
@@ -146,16 +147,17 @@ def export_to_sheet():
         ])
 
     # 3. Clear old data
+    range_to_clear = quote("Data!A6:Z1000", safe="")
+    range_to_write = quote("Data!A6", safe="")
+
     clear_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/{TAB_NAME}!A6:Z1000:clear"
+        f"{sheet_id}/values/{range_to_clear}:clear"
     )
-    requests.post(clear_url, headers=headers)
 
-    # 4. Write new data
     write_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/{TAB_NAME}!A6?valueInputOption=RAW"
+        f"{sheet_id}/values/{range_to_write}?valueInputOption=RAW"
     )
 
     write_res = requests.put(
