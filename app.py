@@ -121,7 +121,7 @@ def search_analytics():
         "startDate": start_date,
         "endDate": end_date,
         "dimensions": ["query"],
-        "rowLimit": 50
+        "rowLimit": 10
     }
 
     headers = {
@@ -158,7 +158,7 @@ def export_to_sheet():
         "startDate": start_date,
         "endDate": end_date,
         "dimensions": ["query"],
-        "rowLimit": 1000
+        "rowLimit": 10
     }
 
     gsc_headers = {
