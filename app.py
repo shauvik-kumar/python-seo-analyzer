@@ -145,11 +145,14 @@ def export_to_sheet():
     end_date = data["endDate"]
 
     # Bearer token
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Missing or invalid Authorization header"}), 401
+    api_key = request.args.get("key") or request.headers.get("X-API-KEY")
 
-    access_token = auth_header.replace("Bearer ", "")
+    if api_key != os.environ.get("POC_API_KEY"):
+        return jsonify({"error": "Invalid API key"}), 401
+
+    # use YOUR stored access token here
+    access_token = os.environ["GSC_ACCESS_TOKEN"]
+
 
     # 1️⃣ Fetch GSC data (reuse logic)
     gsc_url = (
