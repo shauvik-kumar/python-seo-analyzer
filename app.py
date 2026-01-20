@@ -1,23 +1,22 @@
 import os
-from flask import Flask, redirect, request, jsonify, session
+import requests
+from flask import Flask, redirect, request, jsonify
 from flask_cors import CORS
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
+# --------------------
+# App setup
+# --------------------
 app = Flask(__name__)
-CORS(
-    app,
-    supports_credentials=True,
-    origins=[
-        "https://example.com"
-    ]
-)
-@app.route("/ping")
-def ping():
-    return "OK"
-
 app.secret_key = "gsc-secret"
 
+# CORS (API-style, no cookies)
+CORS(app)
+
+# --------------------
+# Env vars
+# --------------------
 CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = os.environ["OAUTH_REDIRECT_URI"]
@@ -27,10 +26,20 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets"
 ]
 
+# --------------------
+# Health checks
+# --------------------
+@app.route("/ping")
+def ping():
+    return "OK"
+
 @app.route("/")
 def home():
     return "GSC backend alive"
 
+# --------------------
+# OAuth login
+# --------------------
 @app.route("/login")
 def login():
     flow = Flow.from_client_config(
@@ -53,8 +62,9 @@ def login():
     )
     return redirect(auth_url)
 
-
-
+# --------------------
+# OAuth callback
+# --------------------
 @app.route("/oauth/callback")
 def callback():
     flow = Flow.from_client_config(
@@ -74,23 +84,19 @@ def callback():
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
 
-    session["credentials"] = {
-    "token": creds.token,
-    "refresh_token": creds.refresh_token,
-    "token_uri": creds.token_uri,
-    "client_id": CLIENT_ID,
-    "client_secret": CLIENT_SECRET,
-    "scopes": creds.scopes,
-}
-
-
+    # TEMP: return token so you can test API calls
+    # (Later you will store this securely per client)
     service = build("searchconsole", "v1", credentials=creds)
     sites = service.sites().list().execute()
 
-    return jsonify(sites)
+    return jsonify({
+        "access_token": creds.token,
+        "sites": sites
+    })
 
-import requests
-
+# --------------------
+# Search Analytics API
+# --------------------
 @app.route("/search-analytics", methods=["POST"])
 def search_analytics():
     data = request.json
@@ -99,13 +105,17 @@ def search_analytics():
     start_date = data["startDate"]
     end_date = data["endDate"]
 
+    # Bearer token auth (NO sessions)
     auth_header = request.headers.get("Authorization")
-    if not auth_header:
-    return jsonify({"error": "Missing token"}), 401
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
     access_token = auth_header.replace("Bearer ", "")
 
-    url = f"https://www.googleapis.com/webmasters/v3/sites/{site.replace('/', '%2F')}/searchAnalytics/query"
+    url = (
+        "https://www.googleapis.com/webmasters/v3/sites/"
+        f"{site.replace('/', '%2F')}/searchAnalytics/query"
+    )
 
     payload = {
         "startDate": start_date,
@@ -120,6 +130,4 @@ def search_analytics():
     }
 
     r = requests.post(url, json=payload, headers=headers)
-
     return jsonify(r.json())
-
