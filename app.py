@@ -1,9 +1,11 @@
 import os
 from flask import Flask, redirect, request, jsonify, session
+from flask_cors import CORS
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
+CORS(app)
 @app.route("/ping")
 def ping():
     return "OK"
