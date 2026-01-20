@@ -28,7 +28,7 @@ SCOPES = [
 ]
 
 # --------------------
-# Health checks
+# Health
 # --------------------
 @app.route("/ping")
 def ping():
@@ -39,7 +39,7 @@ def home():
     return "GSC backend alive"
 
 # --------------------
-# OAuth login (for YOU only)
+# OAuth (for YOU only)
 # --------------------
 @app.route("/login")
 def login():
@@ -63,9 +63,6 @@ def login():
     )
     return redirect(auth_url)
 
-# --------------------
-# OAuth callback (YOU copy token to env)
-# --------------------
 @app.route("/oauth/callback")
 def callback():
     flow = Flow.from_client_config(
@@ -94,15 +91,14 @@ def callback():
     })
 
 # --------------------
-# EXPORT TO GOOGLE SHEET (PoC)
+# EXPORT TO SHEET (PoC)
 # --------------------
 @app.route("/export-to-sheet", methods=["GET"])
 def export_to_sheet():
     data = request.args
 
-    # --- security ---
-    api_key = data.get("key")
-    if api_key != POC_API_KEY:
+    # --- API key check ---
+    if data.get("key") != POC_API_KEY:
         return jsonify({"error": "Invalid API key"}), 401
 
     sheet_id = data["sheetId"]
@@ -111,6 +107,11 @@ def export_to_sheet():
     end_date = data["endDate"]
 
     access_token = GSC_ACCESS_TOKEN
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
 
     # --------------------
     # 1. Fetch GSC data (LIMIT 10)
@@ -127,18 +128,12 @@ def export_to_sheet():
         "rowLimit": 10
     }
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-
-    gsc_response = requests.post(gsc_url, json=gsc_payload, headers=headers)
-    gsc_data = gsc_response.json()
-
+    gsc_res = requests.post(gsc_url, json=gsc_payload, headers=headers)
+    gsc_data = gsc_res.json()
     rows = gsc_data.get("rows", [])
 
     # --------------------
-    # 2. Prepare rows
+    # 2. Prepare values
     # --------------------
     values = [
         ["Query", "Clicks", "Impressions", "CTR", "Position"]
@@ -154,34 +149,32 @@ def export_to_sheet():
         ])
 
     # --------------------
-    # 3. CLEAR old data (Data tab)
+    # 3. CLEAR first sheet explicitly
     # --------------------
     clear_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/Data!A6:Z1000:clear"
+        f"{sheet_id}/values/A1:Z1000:clear"
     )
 
-    requests.post(clear_url, headers=headers)
+    clear_res = requests.post(clear_url, headers=headers)
 
     # --------------------
-    # 4. WRITE fresh data (Data tab)
+    # 4. WRITE starting at A1 (overwrite)
     # --------------------
     write_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/Data!A6?valueInputOption=RAW"
+        f"{sheet_id}/values/A1?valueInputOption=RAW"
     )
 
-    write_payload = {
-        "values": values
-    }
-
-    write_response = requests.put(
+    write_res = requests.put(
         write_url,
-        json=write_payload,
+        json={"values": values},
         headers=headers
     )
 
     return jsonify({
         "status": "success",
-        "rows_written": len(values) - 1
+        "rows_written": len(values) - 1,
+        "sheets_write_status": write_res.status_code,
+        "sheets_write_response": write_res.text
     })
