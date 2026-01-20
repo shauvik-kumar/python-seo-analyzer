@@ -99,11 +99,11 @@ def search_analytics():
     start_date = data["startDate"]
     end_date = data["endDate"]
 
-    creds = session.get("credentials")
-    if not creds:
-        return jsonify({"error": "Not authenticated"}), 401
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+    return jsonify({"error": "Missing token"}), 401
 
-    access_token = creds["token"]
+    access_token = auth_header.replace("Bearer ", "")
 
     url = f"https://www.googleapis.com/webmasters/v3/sites/{site.replace('/', '%2F')}/searchAnalytics/query"
 
