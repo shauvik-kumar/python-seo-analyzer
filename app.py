@@ -75,11 +75,12 @@ def login():
         redirect_uri=REDIRECT_URI,
     )
 
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="consent"
-    )
-    return redirect(auth_url)
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            prompt="consent",
+            include_granted_scopes=False
+        )
+
 
 @app.route("/oauth/callback")
 def callback():
