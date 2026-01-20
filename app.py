@@ -5,7 +5,13 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "https://example.com"
+    ]
+)
 @app.route("/ping")
 def ping():
     return "OK"
