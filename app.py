@@ -153,7 +153,7 @@ def export_to_sheet():
     # --------------------
     clear_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/A1:Z1000:clear"
+        f"{sheet_id}/values/Sheet1!A6:Z1000:clear"
     )
 
     clear_res = requests.post(clear_url, headers=headers)
@@ -163,7 +163,7 @@ def export_to_sheet():
     # --------------------
     write_url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{sheet_id}/values/A1?valueInputOption=RAW"
+        f"{sheet_id}/values/Sheet1!A6?valueInputOption=RAW"
     )
 
     write_res = requests.put(
